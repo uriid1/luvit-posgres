@@ -1,10 +1,5 @@
-# Info
-This driver is based on the codec from https://github.com/creationix/lua-postgres
-
-# Example
-```lua
 local p = require("pretty-print").prettyPrint
-local posgres = require("./pgdriver")
+local posgres = require("../pgdriver")
 
 local function onPsqlResponse(err, res)
     if err then
@@ -18,8 +13,8 @@ end
 local psql = posgres:new({
     username = "your-username";
     database = "your-database";
-    -- host = default?;
-    -- port = default?;
+    -- host = default;
+    -- port = default;
     -- password = without?
 }, onPsqlResponse)
 
@@ -36,4 +31,3 @@ psql:query("SELECT 'Hello' AS greeting", function(err, result)
     -- Close connection
     psql:close()
 end)
-```
