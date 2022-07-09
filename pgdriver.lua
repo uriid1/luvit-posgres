@@ -1,3 +1,12 @@
+--[[
+####--------------------------------####
+#--# Author:   by uriid1            #--#
+#--# License:  GNU GPL              #--#
+#--# Telegram: @main_moderator      #--#
+#--# Mail:     appdurov@gmail.com   #--#
+####--------------------------------####
+--]]
+
 local net = require('net')
 local md5 = require('./md5').sumhexa
 local encode = require('./postgres-codec').encode
@@ -80,7 +89,6 @@ local function get_authentication(data, socket, callback, conf)
 
     else
         callback("Unexpected response type: " .. item[1])
-
     end
 
     return 1, false
@@ -104,7 +112,7 @@ local function get_params(data, next_index, callback)
             }
 
         else
-            callback("Unexpected message: " .. item[1])
+            callback(('[%s] %s'):format(item[1], item[2].M))
             return false, nil
         end
     end
@@ -121,7 +129,7 @@ local function parse(data, socket, callback)
         -- p(item)
         if item[1] == 'ErrorResponse' then
             description = item[2].M
-            err = description
+            err = ('[%s] %s'):format(item[1], item[2].M)
             rows = {}
 
         elseif item[1] == 'RowDescription' then
@@ -168,7 +176,7 @@ local function parse(data, socket, callback)
 
         else
             description = "Unexpected message from server: " .. item[1]
-            err = description
+            err = item[1]
             rows = {}
         end
     end
@@ -214,6 +222,22 @@ function prototype:new(conf, prototype_cb)
         obj.socket:write(startup)
     end)
 
+    -- the custom event listener starts when the server is ready
+    -- process the following request
+    obj.socket:on('readyForQuery', function() 
+        if (#obj.queryQueue > 0) then
+            -- set the flag to false so that another request does not
+            -- interrupt this request
+            isReadyForQuery = false
+
+            local next = shift(obj.queryQueue)
+            obj.socket:write(next.buffer)
+            obj.callback = next.callback
+        else
+           isReadyForQuery = true
+        end
+    end)
+
     --
     local function on_connect()
 
@@ -223,7 +247,7 @@ function prototype:new(conf, prototype_cb)
 
         obj.socket:on('data', function(data)
             if not is_auth then
-                local next_index = 1
+                local next_index
                 next_index, is_auth = get_authentication(data, obj.socket, prototype_cb, conf)
                     
                 if is_auth then
@@ -241,23 +265,6 @@ function prototype:new(conf, prototype_cb)
 
             parse(data, obj.socket, obj.callback)
         end)
-
-        -- the custom event listener starts when the server is ready
-        -- process the following request
-        obj.socket:on('readyForQuery', function() 
-            if (#obj.queryQueue > 0) then
-                -- set the flag to false so that another request does not
-                -- interrupt this request
-                isReadyForQuery = false
-
-                local next = shift(obj.queryQueue)
-                obj.socket:write(next.buffer)
-                obj.callback = next.callback
-            else
-               isReadyForQuery = true
-            end
-        end)
-
     end
 
     obj.socket:connect(port, host, on_connect)

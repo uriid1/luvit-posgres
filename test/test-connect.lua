@@ -3,7 +3,7 @@ local posgres = require("../pgdriver")
 
 local function onPsqlResponse(err, res)
     if err then
-        p(err)
+        print(err)
         return
     end
 
@@ -20,7 +20,7 @@ local psql = posgres:new({
 
 psql:query("SELECT 'Hello' AS greeting", function(err, result)
     if err then
-        print('[error]', err)
+        print(err)
         return
     end
 

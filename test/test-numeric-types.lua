@@ -3,7 +3,7 @@ local posgres = require("../pgdriver")
 
 local function onPsqlResponse(err, res)
     if err then
-        p(err)
+        print(err)
         return
     end
 
@@ -11,8 +11,8 @@ local function onPsqlResponse(err, res)
 end
 
 local psql = posgres:new({
-    username = "your-username";
-    database = "your-database";
+    -- username = "your-username";
+    -- database = "your-database";
     -- host = default;
     -- port = default;
     -- password = without?
