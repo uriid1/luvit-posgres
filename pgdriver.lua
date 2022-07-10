@@ -29,7 +29,7 @@ end
 
 -- Returns the first element of the table
 -- then deletes it by making an offset
-function shift(tbl)
+local function shift(tbl)
     local tmp = tbl[1]
     table.remove(tbl, 1)
     return tmp or {}
