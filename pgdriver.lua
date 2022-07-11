@@ -58,9 +58,11 @@ local function get_authentication(data, socket, callback, conf)
         local salt = item[2]
         local inner = md5(conf.password .. conf.username)
 
-        socket:write({ 'PasswordMessage',
+        socket:write(encode({'PasswordMessage',
             'md5'.. md5(inner .. salt)
-        })
+        }))
+
+        return next_index, false
 
     elseif item[1] == 'AuthenticationCleartextPassword' then
         socket:write({ 'PasswordMessage', conf.password })
