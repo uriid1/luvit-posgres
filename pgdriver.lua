@@ -65,7 +65,7 @@ local function get_authentication(data, socket, callback, conf)
         return next_index, false
 
     elseif item[1] == 'AuthenticationCleartextPassword' then
-        socket:write({ 'PasswordMessage', conf.password })
+        socket:write(encode({ 'PasswordMessage', conf.password }))
 
     elseif item[1] == 'AuthenticationKerberosV5' then
         callback("TODO: Implement AuthenticationKerberosV5 authentication")
