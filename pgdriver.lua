@@ -31,9 +31,10 @@ end
 -- Returns the first element of the table
 -- then deletes it by making an offset
 local function shift(tbl)
-    local tmp = tbl[1]
+    local tmp = {}
+    table.insert(tmp, tbl[1])
     table.remove(tbl, 1)
-    return tmp or {}
+    return tmp[1] or {}
 end
 
 --
@@ -103,7 +104,7 @@ local function get_params(data, next_index, callback)
 
     for item in pairs_parse_data(data, next_index) do
         if item[1] == 'ReadyForQuery' then
-            return true, params
+            return params
 
         elseif item[1] == 'ParameterStatus' then
             params[item[2][1]] = item[2][2]
@@ -116,7 +117,7 @@ local function get_params(data, next_index, callback)
 
         else
             callback(('[%s] %s'):format(item[1], item[2].M))
-            return false, nil
+            return nil
         end
     end
 end
@@ -129,7 +130,7 @@ local function parse(data, socket, callback)
     local err
 
     for item in pairs_parse_data(data) do
-        -- p(item)
+
         if item[1] == 'ErrorResponse' then
             description = item[2].M
             err = ('[%s] %s'):format(item[1], item[2].M)
@@ -168,20 +169,19 @@ local function parse(data, socket, callback)
             summary = item[2]
 
         elseif item[1] == 'ReadyForQuery' then
-            if callback then
-                if not debug_mode then
-                    callback(err, {
-                        rows = rows;
-                    })
-                else
-                    callback(err, {
-                        rows = rows;
-                        description = description;
-                        summary = summary;
-                    })
-                end
+            if not debug_mode then
+                callback(err, {
+                    rows = rows;
+                })
+            else
+                callback(err, {
+                    rows = rows;
+                    description = description;
+                    summary = summary;
+                })
             end
             
+            --
             socket:emit('readyForQuery')
 
         else
@@ -202,12 +202,11 @@ function prototype:new(options)
     -- init
     local obj = setmetatable({}, self)
 
-    local isAuth   = false
-    local isParams = false
+    local isAuth = false
     local port = options.port or 5432
     local host = options.host or '0.0.0.0'
 
-    obj.params = nil
+    obj.parameters = nil
     obj.callback = nil
     obj.queryQueue = {}
     obj.isReadyForQuery = false
@@ -228,12 +227,13 @@ function prototype:new(options)
     --
     obj.socket:on('connect', function(err)
         if err then
-            options.callback(err, "Error in connect")
+            options.callback(err, "[error] Error in connect")
             return
         end
 
         -- Debug
-        options.callback(nil, ("Successfully opened connection %s:%s"):format(host, port))
+        obj.callback = function() end
+        options.callback(nil, ("[true] Opened connection %s:%s"):format(host, port))
 
         --
         obj.socket:write(startup)
@@ -245,13 +245,13 @@ function prototype:new(options)
         if (#obj.queryQueue > 0) then
             -- set the flag to false so that another request does not
             -- interrupt this request
-            isReadyForQuery = false
+            obj.isReadyForQuery = false
 
             local next = shift(obj.queryQueue)
             obj.socket:write(next.buffer)
             obj.callback = next.callback
         else
-           isReadyForQuery = true
+           obj.isReadyForQuery = true
         end
     end)
 
@@ -259,7 +259,7 @@ function prototype:new(options)
     local function on_connect()
 
         obj.socket:on('error', function(err)
-            options.callback(err, "Error in connect")
+            options.callback(err, "[false] Error in connect")
         end)
 
         obj.socket:on('data', function(data)
@@ -268,19 +268,20 @@ function prototype:new(options)
                 next_index, isAuth = get_authentication(data, obj.socket, options)
                     
                 if isAuth then
-                    options.callback(nil, "Successfully authenticated")
-                end 
+                    options.callback(nil, "[true] Authenticated")
+                end
 
-                if not isParams then
-                    isParams, obj.params = get_params(data, next_index, options.callback)
+                if not obj.parameters and debug_mode then
+                    obj.parameters = get_params(data, next_index, options.callback)
 
-                    if isParams and obj.params then
-                        options.callback(nil, "Successfully getting params")
+                    if obj.parameters then
+                        options.callback(nil, "[true] Getting server parameters")
                     end
                 end
             end
 
             parse(data, obj.socket, obj.callback)
+            
         end)
     end
 
@@ -294,14 +295,18 @@ end
 function prototype:query(text, user_cb)
     local buffer = encode({'Query', text})
 
+    -- if the database server is ready for query and the queue is
+    -- empty, send the query directly. Otherwise, add the stack and
     -- callback to the queryQueue
-    if (isReadyForQuery and #self.queryQueue == 0) then
+    if (self.isReadyForQuery and #self.queryQueue == 0) then
         -- set the 'isReadyForQuery' flag to false so that another 
         -- query won't interrupt this one
-        isReadyForQuery = false
+
+        self.isReadyForQuery = false
         self.callback = user_cb
-        self.socket:write(buffer) 
+        self.socket:write(buffer)
     else
+        -- Add to stack
         table.insert(self.queryQueue, {
             buffer = buffer;
             callback = user_cb;
@@ -311,7 +316,7 @@ end
 
 --
 function prototype:close()
-    self.socket:destroy()
+    self.socket:write(encode {'Terminate'} )
 end
 
 return prototype
