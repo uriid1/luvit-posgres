@@ -10,13 +10,17 @@ local function onPsqlResponse(err, res)
     p(res)
 end
 
-local psql = posgres:new({
+local psql = posgres:new {
     username = "your-username";
     database = "your-database";
-    -- host = default?;
-    -- port = default?;
+    callback = onPsqlResponse;
+    -- username = "your-username";
+    -- database = "your-database";
     -- password = without?
-}, onPsqlResponse)
+    -- host = default;
+    -- port = default;
+    -- debug = true;
+}
 
 --
 psql:query([[

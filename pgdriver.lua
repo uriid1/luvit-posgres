@@ -14,6 +14,7 @@ local decode = require('./postgres-codec').decode
 
 -- Debug
 local p = require('pretty-print').prettyPrint
+local debug_mode = false
 
 --
 local function formatError(msg)
@@ -46,17 +47,17 @@ local function pairs_parse_data(data, next_index)
 end
 
 -- 
-local function get_authentication(data, socket, callback, conf)
+local function get_authentication(data, socket, options)
     local item, next_index = decode(data, 1)
 
     if item[1] == 'AuthenticationOk' then
         return next_index, true
 
     elseif item[1] == 'AuthenticationMD5Password' then
-        assert(conf.password, "[error] Password is needed!")
+        assert(options.password, "[error] Password is needed!")
 
         local salt = item[2]
-        local inner = md5(conf.password .. conf.username)
+        local inner = md5(options.password .. options.username)
 
         socket:write(encode({'PasswordMessage',
             'md5'.. md5(inner .. salt)
@@ -65,32 +66,32 @@ local function get_authentication(data, socket, callback, conf)
         return next_index, false
 
     elseif item[1] == 'AuthenticationCleartextPassword' then
-        socket:write(encode({ 'PasswordMessage', conf.password }))
+        socket:write(encode({ 'PasswordMessage', options.password }))
 
     elseif item[1] == 'AuthenticationKerberosV5' then
-        callback("TODO: Implement AuthenticationKerberosV5 authentication")
+        options.callback("TODO: Implement AuthenticationKerberosV5 authentication")
 
     elseif item[1] == 'AuthenticationSCMCredential' then
         -- only possible for local unix domain connections
-        callback("TODO: Implement AuthenticationSCMCredential authentication")
+        options.callback("TODO: Implement AuthenticationSCMCredential authentication")
 
     elseif item[1] == 'AuthenticationGSS' then
         -- frontend initiates GSSAPI negotiation
-        callback("TODO: Implement AuthenticationGSS authentication")
+        options.callback("TODO: Implement AuthenticationGSS authentication")
 
     elseif item[1] == 'AuthenticationSSPI' then
         -- frontend has to initiate a SSPI negotiation
-        callback("TODO: Implement AuthenticationSSPI authentication")
+        options.callback("TODO: Implement AuthenticationSSPI authentication")
 
     elseif item[1] == 'AuthenticationGSSContinue' then
         -- continuation of SSPI and GSS or a previous GSSContinue...
-        callback("TODO: Implement AuthenticationGSSContinue authentication")
+        options.callback("TODO: Implement AuthenticationGSSContinue authentication")
 
     elseif item[1] == 'ErrorResponse' then
-        callback(formatError(item[2]))
+        options.callback(formatError(item[2]))
 
     else
-        callback("Unexpected response type: " .. item[1])
+        options.callback("Unexpected response type: " .. item[1])
     end
 
     return 1, false
@@ -159,6 +160,7 @@ local function parse(data, socket, callback)
                 then
                     value = tonumber(value)
                 end
+
                 row[field] = value
             end
 
@@ -167,11 +169,17 @@ local function parse(data, socket, callback)
 
         elseif item[1] == 'ReadyForQuery' then
             if callback then
-                callback(err, {
-                    rows = rows;
-                    description = description;
-                    summary = summary;
-                })
+                if not debug_mode then
+                    callback(err, {
+                        rows = rows;
+                    })
+                else
+                    callback(err, {
+                        rows = rows;
+                        description = description;
+                        summary = summary;
+                    })
+                end
             end
             
             socket:emit('readyForQuery')
@@ -188,14 +196,16 @@ end
 local prototype = {}
 prototype.__index = prototype
 
-function prototype:new(conf, prototype_cb)
+function prototype:new(options)
+    assert(type(options) == "table")
+
     -- init
     local obj = setmetatable({}, self)
 
-    local is_auth = false
-    local is_params = false
-    local port = conf.port or 5432
-    local host = conf.host or '0.0.0.0'
+    local isAuth   = false
+    local isParams = false
+    local port = options.port or 5432
+    local host = options.host or '0.0.0.0'
 
     obj.params = nil
     obj.callback = nil
@@ -203,9 +213,14 @@ function prototype:new(conf, prototype_cb)
     obj.isReadyForQuery = false
 
     local startup = encode({'StartupMessage', {
-        user     = conf.username;
-        database = conf.database;
+        user     = options.username;
+        database = options.database;
     }})
+
+    --
+    if options.debug then
+        debug_mode = options.debug or false
+    end
 
     --
     obj.socket = net.Socket:new()
@@ -213,12 +228,12 @@ function prototype:new(conf, prototype_cb)
     --
     obj.socket:on('connect', function(err)
         if err then
-            prototype_cb(err, "Error in connect")
+            options.callback(err, "Error in connect")
             return
         end
 
         -- Debug
-        prototype_cb(nil, ("Successfully opened connection %s:%s"):format(host, port))
+        options.callback(nil, ("Successfully opened connection %s:%s"):format(host, port))
 
         --
         obj.socket:write(startup)
@@ -244,23 +259,23 @@ function prototype:new(conf, prototype_cb)
     local function on_connect()
 
         obj.socket:on('error', function(err)
-            prototype_cb(err, "Error in connect")
+            options.callback(err, "Error in connect")
         end)
 
         obj.socket:on('data', function(data)
-            if not is_auth then
+            if not isAuth then
                 local next_index
-                next_index, is_auth = get_authentication(data, obj.socket, prototype_cb, conf)
+                next_index, isAuth = get_authentication(data, obj.socket, options)
                     
-                if is_auth then
-                    prototype_cb(nil, "Successfully authenticated")
+                if isAuth then
+                    options.callback(nil, "Successfully authenticated")
                 end 
 
-                if not is_params then
-                    is_params, obj.params = get_params(data, next_index, prototype_cb)
+                if not isParams then
+                    isParams, obj.params = get_params(data, next_index, options.callback)
 
-                    if is_params and obj.params then
-                        prototype_cb(nil, "Successfully getting params")
+                    if isParams and obj.params then
+                        options.callback(nil, "Successfully getting params")
                     end
                 end
             end
