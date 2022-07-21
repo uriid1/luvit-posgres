@@ -14,7 +14,7 @@ local decode = require('./postgres-codec').decode
 
 -- Debug
 local p = require('pretty-print').prettyPrint
-local debug_mode = false
+local f = function() end
 
 --
 local function formatError(msg)
@@ -123,7 +123,7 @@ local function get_params(data, next_index, callback)
 end
 
 -- Parse responses
-local function parse(data, socket, callback)
+local function parse(data, socket, callback, debug_mode)
     local description
     local rows
     local summary
@@ -205,21 +205,18 @@ function prototype:new(options)
     local isAuth = false
     local port = options.port or 5432
     local host = options.host or '0.0.0.0'
-
-    obj.parameters = nil
-    obj.callback = nil
-    obj.queryQueue = {}
-    obj.isReadyForQuery = false
-
     local startup = encode({'StartupMessage', {
         user     = options.username;
         database = options.database;
     }})
 
-    --
-    if options.debug then
-        debug_mode = options.debug or false
-    end
+    obj.index = 0
+    obj.parameters = nil
+    obj.callback = options.callback or f
+    obj.callbackClose = options.callbackClose or f
+    obj.queryQueue = {}
+    obj.isReadyForQuery = false
+    obj.debug_mode = options.debug or false
 
     --
     obj.socket = net.Socket:new()
@@ -227,16 +224,21 @@ function prototype:new(options)
     --
     obj.socket:on('connect', function(err)
         if err then
-            options.callback(err, "[error] Error in connect")
+            options.callback(err, ("[error] index: %s. Error in connect"):format(obj.index))
             return
         end
 
         -- Debug
-        obj.callback = function() end
-        options.callback(nil, ("[true] Opened connection %s:%s"):format(host, port))
+        obj.callback = f
+        options.callback(nil, ("[index: %s] Opened connection %s:%s"):format(obj.index, host, port))
 
         --
         obj.socket:write(startup)
+    end)
+
+    -- Psql close connection
+    obj.socket:on('close', function()
+        options.callbackClose(obj.index, ("[close] Index %s connection close"):format(obj.index))
     end)
 
     -- the custom event listener starts when the server is ready
@@ -259,7 +261,7 @@ function prototype:new(options)
     local function on_connect()
 
         obj.socket:on('error', function(err)
-            options.callback(err, "[false] Error in connect")
+            options.callback(err, ("[error] Index %s failed connection"):format(obj.index))
         end)
 
         obj.socket:on('data', function(data)
@@ -268,19 +270,19 @@ function prototype:new(options)
                 next_index, isAuth = get_authentication(data, obj.socket, options)
                     
                 if isAuth then
-                    options.callback(nil, "[true] Authenticated")
+                    options.callback(nil, ("[true] Index %s Authenticated"):format(obj.index))
                 end
 
-                if not obj.parameters and debug_mode then
+                if not obj.parameters and obj.debug_mode then
                     obj.parameters = get_params(data, next_index, options.callback)
 
                     if obj.parameters then
-                        options.callback(nil, "[true] Getting server parameters")
+                        options.callback(nil, ("[true] Index %s Getting server parameters"):format(obj.index))
                     end
                 end
             end
 
-            parse(data, obj.socket, obj.callback)
+            parse(data, obj.socket, obj.callback, debug_mode)
             
         end)
     end
