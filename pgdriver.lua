@@ -197,7 +197,7 @@ local prototype = {}
 prototype.__index = prototype
 
 function prototype:new(options)
-    assert(type(options) == "table")
+    assert(type(options) == "table", "[Error] options id not table. " .. type(options))
 
     -- init
     local obj = setmetatable({}, self)
@@ -244,7 +244,7 @@ function prototype:new(options)
     -- the custom event listener starts when the server is ready
     -- process the following request
     obj.socket:on('readyForQuery', function() 
-        if (#obj.queryQueue > 0) then
+        if #obj.queryQueue > 0 then
             -- set the flag to false so that another request does not
             -- interrupt this request
             obj.isReadyForQuery = false
@@ -282,7 +282,7 @@ function prototype:new(options)
                 end
             end
 
-            parse(data, obj.socket, obj.callback, debug_mode)
+            parse(data, obj.socket, obj.callback, obj.debug_mode)
             
         end)
     end
@@ -300,7 +300,7 @@ function prototype:query(text, user_cb)
     -- if the database server is ready for query and the queue is
     -- empty, send the query directly. Otherwise, add the stack and
     -- callback to the queryQueue
-    if (self.isReadyForQuery and #self.queryQueue == 0) then
+    if self.isReadyForQuery and #self.queryQueue == 0 then
         -- set the 'isReadyForQuery' flag to false so that another 
         -- query won't interrupt this one
 

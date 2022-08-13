@@ -35,7 +35,7 @@ local n_psql = #psql
 local i_prev = 0
 local function balancer()
     i_prev = i_prev + 1
-    if (i_prev > n_psql) then
+    if i_prev > n_psql then
         i_prev = 1
     end
 
