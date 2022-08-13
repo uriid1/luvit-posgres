@@ -1,7 +1,8 @@
 # Info
-This driver is based on the codec from https://github.com/creationix/lua-postgres
 <b>Current support for postgres 12. With MD5 authentication<br>
 Postgres 14 requires SCRAM-SHA-256 authentication, which is not supported in this library.</b>
+<br>
+This driver is based on the codec from https://github.com/creationix/lua-postgres
 
 # Example
 ```lua
